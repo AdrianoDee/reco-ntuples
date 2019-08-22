@@ -168,8 +168,9 @@ class HGCalTracksterPID : public edm::one::EDAnalyzer<edm::one::WatchRuns, edm::
   virtual void endJob() override;
   virtual int fillLayerCluster(const edm::Ptr<reco::CaloCluster> &layerCluster,
                                const bool &fillRecHits, const int &multiClusterIndex = -1);
-  // virtual int fillLayerCluster(const edm::Ptr<reco::CaloCluster> &layerCluster,
-  //                              const bool &fillRecHits, const int &multiClusterIndex = -1);
+  virtual int fillLayerCluster(const edm::Ptr<reco::CaloCluster> &layerCluster, const int &multiClusterIndex, const bool &fillRecHits);
+
+
   virtual void fillRecHit(const DetId &detid, const float &fraction, const unsigned int &layer,
                           const int &cluster_index_ = -1);
 
@@ -192,6 +193,7 @@ class HGCalTracksterPID : public edm::one::EDAnalyzer<edm::one::WatchRuns, edm::
   std::string inputTag_HGCalMultiCluster_;
   bool rawRecHits_;
   bool verbose_;
+  bool doTracksters_;
 
   // ----------member data ---------------------------
 
@@ -506,6 +508,7 @@ HGCalTracksterPID::HGCalTracksterPID(const edm::ParameterSet &iConfig)
       inputTag_HGCalMultiCluster_(iConfig.getParameter<std::string>("inputTag_HGCalMultiCluster")),
       rawRecHits_(iConfig.getParameter<bool>("rawRecHits")),
       verbose_(iConfig.getParameter<bool>("verbose")),
+      doTracksters_(iConfig.getParameter<bool>("doTracksters")),
       particleFilter_(iConfig.getParameter<edm::ParameterSet>("TestParticleFilter")) {
   // now do what ever initialization is needed
   mySimEvent_ = new FSimEvent(particleFilter_);
@@ -576,6 +579,7 @@ HGCalTracksterPID::HGCalTracksterPID(const edm::ParameterSet &iConfig)
   t_->Branch("genpart_dvx", &genpart_dvx_);
   t_->Branch("genpart_dvy", &genpart_dvy_);
   t_->Branch("genpart_dvz", &genpart_dvz_);
+
   if (storeMoreGenInfo_) {
     t_->Branch("genpart_ovx", &genpart_ovx_);
     t_->Branch("genpart_ovy", &genpart_ovy_);
@@ -1321,10 +1325,105 @@ void HGCalTracksterPID::analyze(const edm::Event &iEvent, const edm::EventSetup 
 
   const reco::CaloClusterCollection &clusters = *clusterHandle;
   unsigned int nclus = clusters.size();
+
+  //Fills trackster infos
+
+  unsigned int ntrackster = 0;
+
+  if(doTracksters_)
+  {
+
+    ntrackster = tracksters.size();
+    for (unsigned it = 0; it < ntrackster; ++it)
+    {
+      std::cout << "Trackster " << it << std::endl;
+
+      std::vector<unsigned int> ids;
+      for (unsigned int i = 0; i < tracksters[it].vertices.size(); i++)
+      {
+        std::cout << tracksters[it].vertices[i] << " - ";
+        ids.push_back(tracksters[it].vertices[i]);
+      }
+      std::cout << std::endl;
+      std::cout << std::endl;
+      trackster_clusters_.push_back(ids);
+    }
+  }
+
+
+  std::vector<std::vector<std::tuple<unsigned int, int, float>>> cpsInLayerCluster;
+  cpsInLayerCluster.resize(nclus);
+
+  std::vector<std::vector<HGVHistoProducerAlgo::caloParticleOnLayer>> cPOnLayer;
+  unsigned int nCaloParticles = caloParticles->size();
+  std::cout << "Running" << std::endl;
+  unsigned nlayers =   recHitTools_.lastLayerFH();
+
+  cPOnLayer.resize(nCaloParticles);
+  for (unsigned int i = 0; i < nCaloParticles; ++i) {
+    cPOnLayer[i].resize(nlayers * 2);
+
+    for (unsigned int j = 0; j < nlayers * 2; ++j) {
+      cPOnLayer[i][j].caloParticleId = i;
+      cPOnLayer[i][j].energy = 0.f;
+      cPOnLayer[i][j].hits_and_fractions.clear();
+    }
+  }
+  //
+  std::unordered_map<DetId, std::vector<HGVHistoProducerAlgo::detIdInfoInCluster>> detIdToCaloParticleId_Map;
+  std::unordered_map<DetId, std::vector<HGVHistoProducerAlgo::detIdInfoInCluster>> detIdToLayerClusterId_Map;
+  // for (const auto& cpId : cPIndices) {
+  for (unsigned cpId = 0; cpId < nCaloParticles; ++cpId)
+  {
+    std::cout << "Calo part : " << (*caloParticles)[cpId].pdgId() << std::endl;
+    const SimClusterRefVector& simClusterRefVector = (*caloParticles)[cpId].simClusters();
+
+    for (const auto& it_sc : simClusterRefVector) {
+      const SimCluster& simCluster = (*(it_sc));
+      const auto& hits_and_fractions = simCluster.hits_and_fractions();
+      for (const auto& it_haf : hits_and_fractions) {
+        DetId hitid = (it_haf.first);
+        int cpLayerId = recHitTools_.getLayerWithOffset(hitid) + nlayers * ((recHitTools_.zside(hitid) + 1) >> 1) - 1;
+        std::map<DetId, const HGCRecHit*>::const_iterator itcheck = hitmap_.find(hitid);
+        if (itcheck != hitmap_.end()) {
+          const HGCRecHit* hit = itcheck->second;
+          auto hit_find_it = detIdToCaloParticleId_Map.find(hitid);
+          if (hit_find_it == detIdToCaloParticleId_Map.end()) {
+            detIdToCaloParticleId_Map[hitid] = std::vector<HGVHistoProducerAlgo::detIdInfoInCluster>();
+            detIdToCaloParticleId_Map[hitid].emplace_back(
+              HGVHistoProducerAlgo::detIdInfoInCluster{cpId, it_haf.second});
+            } else {
+              auto findHitIt = std::find(detIdToCaloParticleId_Map[hitid].begin(),
+              detIdToCaloParticleId_Map[hitid].end(),
+              HGVHistoProducerAlgo::detIdInfoInCluster{cpId, it_haf.second});
+              if (findHitIt != detIdToCaloParticleId_Map[hitid].end()) {
+                findHitIt->fraction += it_haf.second;
+              } else {
+                detIdToCaloParticleId_Map[hitid].emplace_back(
+                  HGVHistoProducerAlgo::detIdInfoInCluster{cpId, it_haf.second});
+                }
+              }
+              cPOnLayer[cpId][cpLayerId].energy += it_haf.second * hit->energy();
+
+              auto& haf = cPOnLayer[cpId][cpLayerId].hits_and_fractions;
+              auto found = std::find_if(
+                std::begin(haf), std::end(haf), [&hitid](const std::pair<DetId, float>& v) { return v.first == hitid; });
+                if (found != haf.end()) {
+                  found->second += it_haf.second;
+                } else {
+                  cPOnLayer[cpId][cpLayerId].hits_and_fractions.emplace_back(hitid, it_haf.second);
+                }
+              }
+            }
+          }
+        }
+
+
   cluster_index_ = 0;
   rechit_index_ = 0;
   storedLayerClusters_.clear();
   storedRecHits_.clear();
+
   for (unsigned int i = 0; i < multiClusters.size(); i++) {
     int cl2dSeed = 0;
     std::set<int> layers;
@@ -1334,7 +1433,15 @@ void HGCalTracksterPID::analyze(const edm::Event &iEvent, const edm::EventSetup 
          it != multiClusters[i].end(); it++) {
       if ((*it)->energy() > (*(it + cl2dSeed))->energy()) cl2dSeed = it - multiClusters[i].begin();
       cl2dIndices.push_back(cluster_index_);
-      int layer = fillLayerCluster(*it, true, i);
+      int layer = 0;
+      if(doTracksters_)
+      {
+        layer = fillLayerCluster(*it, i, true);
+      }
+      else
+      {
+        layer = fillLayerCluster(*it, true, i);
+      }
       layers.insert(layer);
     }  // end of loop on layer clusters
 
@@ -1354,182 +1461,105 @@ void HGCalTracksterPID::analyze(const edm::Event &iEvent, const edm::EventSetup 
     multiclus_NLay_.push_back(layers.size());
   }  // end of loop on multiclusters
 
-  //Fills trackster infos
-  unsigned int ntrackster = tracksters.size();
 
-  for (unsigned it = 0; it < ntrackster; ++it)
-  {
-    std::vector<unsigned int> ids;
-    for (unsigned int i = 0; i < tracksters[it].vertices.size(); i++)
-    {
-      ids.push_back(tracksters[it].vertices[i]);
-    }
-    trackster_clusters_.push_back(ids);
-  }
+  // Fills the additional 2d layers
+  for (unsigned ic = 0; ic < nclus; ++ic) {
 
-    std::vector<std::vector<std::tuple<unsigned int, int, float>>> cpsInLayerCluster;
-    cpsInLayerCluster.resize(nclus);
 
-    std::vector<std::vector<HGVHistoProducerAlgo::caloParticleOnLayer>> cPOnLayer;
-    unsigned int nCaloParticles = caloParticles->size();
-    std::cout << "Running" << std::endl;
-    unsigned nlayers =   recHitTools_.lastLayerFH();
+    edm::Ptr<reco::BasicCluster> clusterPtr(clusterHandle, ic);
 
-    cPOnLayer.resize(nCaloParticles);
-    for (unsigned int i = 0; i < nCaloParticles; ++i) {
-      cPOnLayer[i].resize(nlayers * 2);
+    std::cout << "Cluster n." << ic << " : ";
 
-      for (unsigned int j = 0; j < nlayers * 2; ++j) {
-        cPOnLayer[i][j].caloParticleId = i;
-        cPOnLayer[i][j].energy = 0.f;
-        cPOnLayer[i][j].hits_and_fractions.clear();
+    if (storedLayerClusters_.find(clusterPtr) == storedLayerClusters_.end()) {
+
+      double pt = clusterPtr->energy() / cosh(clusterPtr->eta());
+      if (pt > layerClusterPtThreshold_) {
+
+
+        std::vector<unsigned int> ids;
+        //ids.push_back(-1);
+
+        for (unsigned it = 0; it < ntrackster; ++it)
+        {
+          if(std::find(trackster_clusters_[it].begin(),trackster_clusters_[it].end(),ic)!=trackster_clusters_[it].end())
+          {
+            std::cout << it << ";";
+            ids.push_back(it);
+          }
+        }
+        std::cout <<std::endl;
+
+        cluster2d_trackster_.push_back(ids);
+
+        const std::vector<std::pair<DetId, float>>& hits_and_fractions = clusters[ic].hitsAndFractions();
+        unsigned int numberOfHitsInLC = hits_and_fractions.size();
+
+        auto maxCPEnergyInLC = 0.f;
+        auto maxCPId = -1;
+        auto maxCPPdg = -9999;
+
+        std::unordered_map<unsigned, float> CPEnergyInLC;
+
+        for (unsigned int hitId = 0; hitId < numberOfHitsInLC; hitId++) {
+          DetId rh_detid = hits_and_fractions[hitId].first;
+          auto rhFraction = hits_and_fractions[hitId].second;
+
+          std::map<DetId, const HGCRecHit*>::const_iterator itcheck = hitmap_.find(rh_detid);
+          const HGCRecHit* hit = itcheck->second;
+
+          auto hit_find_in_LC = detIdToLayerClusterId_Map.find(rh_detid);
+          if (hit_find_in_LC == detIdToLayerClusterId_Map.end()) {
+            detIdToLayerClusterId_Map[rh_detid] = std::vector<HGVHistoProducerAlgo::detIdInfoInCluster>();
+          }
+          detIdToLayerClusterId_Map[rh_detid].emplace_back(HGVHistoProducerAlgo::detIdInfoInCluster{ic, rhFraction});
+
+          auto hit_find_in_CP = detIdToCaloParticleId_Map.find(rh_detid);
+
+          if (hit_find_in_CP != detIdToCaloParticleId_Map.end())
+          {
+
+            for (auto& h : hit_find_in_CP->second) {
+              CPEnergyInLC[h.clusterId] += h.fraction * hit->energy();
+            }
+          }
+
+        }
+
+        std::vector<unsigned int> cpId;
+        std::vector<int> cpPdg;
+        std::vector<float> cpEn;
+
+        for(auto& cp: CPEnergyInLC)
+        {
+          if(cp.second>maxCPEnergyInLC)
+          {
+            maxCPEnergyInLC =cp.second;
+            maxCPId = cp.first;
+            maxCPPdg = (*caloParticles)[maxCPId].pdgId();
+          }
+
+          cpId.push_back(cp.first);
+          cpPdg.push_back((*caloParticles)[cp.first].pdgId());
+          cpEn.push_back(cp.second);
+        }
+
+
+        cluster2d_best_cpId_.push_back(maxCPId);
+        cluster2d_best_cpPdg_.push_back(maxCPPdg);
+        cluster2d_best_cpEnergy_.push_back(maxCPEnergyInLC);
+
+        cluster2d_cpId_.push_back(cpId);
+        cluster2d_cpPdg_.push_back(cpPdg);
+        cluster2d_cpEnergy_.push_back(cpEn);
+
+        std::cout << "cp: " << maxCPId << " - " << maxCPPdg << " - " << maxCPEnergyInLC << " (cluster en: " << clusterPtr->energy() << " )"<< std::endl;
+        fillLayerCluster(clusterPtr, rawRecHits_);
+
       }
+
     }
-    //
-    std::unordered_map<DetId, std::vector<HGVHistoProducerAlgo::detIdInfoInCluster>> detIdToCaloParticleId_Map;
-    std::unordered_map<DetId, std::vector<HGVHistoProducerAlgo::detIdInfoInCluster>> detIdToLayerClusterId_Map;
-    // for (const auto& cpId : cPIndices) {
-    for (unsigned cpId = 0; cpId < nCaloParticles; ++cpId)
-    {
-      std::cout << "Calo part : " << (*caloParticles)[cpId].pdgId() << std::endl;
-      const SimClusterRefVector& simClusterRefVector = (*caloParticles)[cpId].simClusters();
 
-      for (const auto& it_sc : simClusterRefVector) {
-        const SimCluster& simCluster = (*(it_sc));
-        const auto& hits_and_fractions = simCluster.hits_and_fractions();
-        for (const auto& it_haf : hits_and_fractions) {
-          DetId hitid = (it_haf.first);
-          int cpLayerId = recHitTools_.getLayerWithOffset(hitid) + nlayers * ((recHitTools_.zside(hitid) + 1) >> 1) - 1;
-          std::map<DetId, const HGCRecHit*>::const_iterator itcheck = hitmap_.find(hitid);
-          if (itcheck != hitmap_.end()) {
-            const HGCRecHit* hit = itcheck->second;
-            auto hit_find_it = detIdToCaloParticleId_Map.find(hitid);
-            if (hit_find_it == detIdToCaloParticleId_Map.end()) {
-              detIdToCaloParticleId_Map[hitid] = std::vector<HGVHistoProducerAlgo::detIdInfoInCluster>();
-              detIdToCaloParticleId_Map[hitid].emplace_back(
-                HGVHistoProducerAlgo::detIdInfoInCluster{cpId, it_haf.second});
-              } else {
-                auto findHitIt = std::find(detIdToCaloParticleId_Map[hitid].begin(),
-                detIdToCaloParticleId_Map[hitid].end(),
-                HGVHistoProducerAlgo::detIdInfoInCluster{cpId, it_haf.second});
-                if (findHitIt != detIdToCaloParticleId_Map[hitid].end()) {
-                  findHitIt->fraction += it_haf.second;
-                } else {
-                  detIdToCaloParticleId_Map[hitid].emplace_back(
-                    HGVHistoProducerAlgo::detIdInfoInCluster{cpId, it_haf.second});
-                  }
-                }
-                cPOnLayer[cpId][cpLayerId].energy += it_haf.second * hit->energy();
-                // We need to compress the hits and fractions in order to have a
-                // reasonable score between CP and LC. Imagine, for example, that a
-                // CP has detID X used by 2 SimClusters with different fractions. If
-                // a single LC uses X with fraction 1 and is compared to the 2
-                // contributions separately, it will be assigned a score != 0, which
-                // is wrong.
-                auto& haf = cPOnLayer[cpId][cpLayerId].hits_and_fractions;
-                auto found = std::find_if(
-                  std::begin(haf), std::end(haf), [&hitid](const std::pair<DetId, float>& v) { return v.first == hitid; });
-                  if (found != haf.end()) {
-                    found->second += it_haf.second;
-                  } else {
-                    cPOnLayer[cpId][cpLayerId].hits_and_fractions.emplace_back(hitid, it_haf.second);
-                  }
-                }
-              }
-            }
-          }
-
-          // Fills the additional 2d layers
-          for (unsigned ic = 0; ic < nclus; ++ic) {
-
-
-            edm::Ptr<reco::BasicCluster> clusterPtr(clusterHandle, ic);
-
-
-            if (storedLayerClusters_.find(clusterPtr) == storedLayerClusters_.end()) {
-              double pt = clusterPtr->energy() / cosh(clusterPtr->eta());
-              if (pt > layerClusterPtThreshold_) {
-
-
-                std::vector<unsigned int> ids;
-                //ids.push_back(-1);
-                for (unsigned it = 0; it < ntrackster; ++it)
-                {
-                  if(std::find(trackster_clusters_[it].begin(),trackster_clusters_[it].end(),ic)!=trackster_clusters_[it].end())
-                  {
-                    ids.push_back(it);
-                  }
-                }
-
-                cluster2d_trackster_.push_back(ids);
-
-                const std::vector<std::pair<DetId, float>>& hits_and_fractions = clusters[ic].hitsAndFractions();
-                unsigned int numberOfHitsInLC = hits_and_fractions.size();
-
-                auto maxCPEnergyInLC = 0.f;
-                auto maxCPId = -1;
-                auto maxCPPdg = -9999;
-
-                std::unordered_map<unsigned, float> CPEnergyInLC;
-
-                for (unsigned int hitId = 0; hitId < numberOfHitsInLC; hitId++) {
-                  DetId rh_detid = hits_and_fractions[hitId].first;
-                  auto rhFraction = hits_and_fractions[hitId].second;
-
-                  std::map<DetId, const HGCRecHit*>::const_iterator itcheck = hitmap_.find(rh_detid);
-                  const HGCRecHit* hit = itcheck->second;
-
-                  auto hit_find_in_LC = detIdToLayerClusterId_Map.find(rh_detid);
-                  if (hit_find_in_LC == detIdToLayerClusterId_Map.end()) {
-                    detIdToLayerClusterId_Map[rh_detid] = std::vector<HGVHistoProducerAlgo::detIdInfoInCluster>();
-                  }
-                  detIdToLayerClusterId_Map[rh_detid].emplace_back(HGVHistoProducerAlgo::detIdInfoInCluster{ic, rhFraction});
-
-                  auto hit_find_in_CP = detIdToCaloParticleId_Map.find(rh_detid);
-
-                  if (hit_find_in_CP != detIdToCaloParticleId_Map.end())
-                  {
-
-                    for (auto& h : hit_find_in_CP->second) {
-                      CPEnergyInLC[h.clusterId] += h.fraction * hit->energy();
-                    }
-                  }
-
-                }
-
-                std::vector<unsigned int> cpId;
-                std::vector<int> cpPdg;
-                std::vector<float> cpEn;
-
-                for(auto& cp: CPEnergyInLC)
-                {
-                  if(cp.second>maxCPEnergyInLC)
-                  {
-                    maxCPEnergyInLC =cp.second;
-                    maxCPId = cp.first;
-                    maxCPPdg = (*caloParticles)[maxCPId].pdgId();
-                  }
-
-                  cpId.push_back(cp.first);
-                  cpPdg.push_back((*caloParticles)[cp.first].pdgId());
-                  cpEn.push_back(cp.second);
-                }
-
-                cluster2d_best_cpId_.push_back(maxCPId);
-                cluster2d_best_cpPdg_.push_back(maxCPPdg);
-                cluster2d_best_cpEnergy_.push_back(maxCPEnergyInLC);
-
-                cluster2d_cpId_.push_back(cpId);
-                cluster2d_cpPdg_.push_back(cpPdg);
-                cluster2d_cpEnergy_.push_back(cpEn);
-
-                fillLayerCluster(clusterPtr, rawRecHits_);
-
-              }
-
-            }
-
-          }
+  }
 
   // Fill remaining RecHits
   if (rawRecHits_) {
@@ -1958,6 +1988,38 @@ void HGCalTracksterPID::retrieveLayerPositions(const edm::EventSetup &es, unsign
   }
 }
 
+int HGCalTracksterPID::fillLayerCluster(const edm::Ptr<reco::CaloCluster> &layerCluster, const int &multiClusterIndex,
+                                    const bool &fillRecHits) {
+  // std::cout << "in fillLayerCluster" << std::endl;
+  const std::vector<std::pair<DetId, float>> &hf = layerCluster->hitsAndFractions();
+
+  int layer = 0;
+
+  unsigned hfsize = hf.size();
+
+  for (unsigned int j = 0; j < hfsize; j++) {
+    // here we loop over detid/fraction pairs
+    float fraction = hf[j].second;
+    const DetId rh_detid = hf[j].first;
+    layer = recHitTools_.getLayerWithOffset(rh_detid);
+
+    if (fillRecHits) {
+      if (storedRecHits_.find(rh_detid) == storedRecHits_.end()) {
+        fillRecHit(rh_detid, fraction, layer, cluster_index_);
+      } else {
+        // need to see what to do about existing rechits in case of sharing
+        if (verbose_) {
+          std::cout << "RecHit already filled for different layer cluster: " << int(rh_detid)
+                   << std::endl;
+        }
+      }
+    }
+  }
+
+  ++cluster_index_;
+  return layer;
+}
+
 int HGCalTracksterPID::fillLayerCluster(const edm::Ptr<reco::CaloCluster> &layerCluster,
                                     const bool &fillRecHits, const int &multiClusterIndex) {
   // std::cout << "in fillLayerCluster" << std::endl;
@@ -2003,6 +2065,7 @@ int HGCalTracksterPID::fillLayerCluster(const edm::Ptr<reco::CaloCluster> &layer
       }
     }
   }
+
 
   double pt = layerCluster->energy() / cosh(layerCluster->eta());
 
