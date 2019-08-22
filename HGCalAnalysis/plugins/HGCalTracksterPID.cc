@@ -186,7 +186,7 @@ class HGCalTracksterPID : public edm::one::EDAnalyzer<edm::one::WatchRuns, edm::
   bool storeElectrons_;
   bool storePFCandidates_;
   bool storeGunParticles_;
-  bool storeClusterMatching_;
+  bool storeCPMatching_;
   double layerClusterPtThreshold_;
   double propagationPtThreshold_;
   std::string detector_;
@@ -194,6 +194,7 @@ class HGCalTracksterPID : public edm::one::EDAnalyzer<edm::one::WatchRuns, edm::
   bool rawRecHits_;
   bool verbose_;
   bool doTracksters_;
+  bool forPIDOnly_;
 
   // ----------member data ---------------------------
 
@@ -501,7 +502,7 @@ HGCalTracksterPID::HGCalTracksterPID(const edm::ParameterSet &iConfig)
       storeElectrons_(iConfig.getParameter<bool>("storeElectrons")),
       storePFCandidates_(iConfig.getParameter<bool>("storePFCandidates")),
       storeGunParticles_(iConfig.getParameter<bool>("storeGunParticles")),
-      storeClusterMatching_(iConfig.getParameter<bool>("storeGunParticles")),
+      storeCPMatching_(iConfig.getParameter<bool>("storeCPMatching")),
       layerClusterPtThreshold_(iConfig.getParameter<double>("layerClusterPtThreshold")),
       propagationPtThreshold_(iConfig.getUntrackedParameter<double>("propagationPtThreshold", 3.0)),
       detector_(iConfig.getParameter<std::string>("detector")),
@@ -509,6 +510,7 @@ HGCalTracksterPID::HGCalTracksterPID(const edm::ParameterSet &iConfig)
       rawRecHits_(iConfig.getParameter<bool>("rawRecHits")),
       verbose_(iConfig.getParameter<bool>("verbose")),
       doTracksters_(iConfig.getParameter<bool>("doTracksters")),
+      forPIDOnly_(iConfig.getParameter<bool>("forPIDOnly")),
       particleFilter_(iConfig.getParameter<edm::ParameterSet>("TestParticleFilter")) {
   // now do what ever initialization is needed
   mySimEvent_ = new FSimEvent(particleFilter_);
@@ -613,28 +615,6 @@ HGCalTracksterPID::HGCalTracksterPID(const edm::ParameterSet &iConfig)
     t_->Branch("gen_daughters", &gen_daughters_);
   }
 
-  ////////////////////
-  // RecHits
-  // associated to layer clusters
-  t_->Branch("rechit_eta", &rechit_eta_);
-  t_->Branch("rechit_phi", &rechit_phi_);
-  t_->Branch("rechit_pt", &rechit_pt_);
-  t_->Branch("rechit_energy", &rechit_energy_);
-  t_->Branch("rechit_x", &rechit_x_);
-  t_->Branch("rechit_y", &rechit_y_);
-  t_->Branch("rechit_z", &rechit_z_);
-  t_->Branch("rechit_time", &rechit_time_);
-  t_->Branch("rechit_thickness", &rechit_thickness_);
-  t_->Branch("rechit_layer", &rechit_layer_);
-  t_->Branch("rechit_wafer_u", &rechit_wafer_u_);
-  t_->Branch("rechit_wafer_v", &rechit_wafer_v_);
-  t_->Branch("rechit_cell_u", &rechit_cell_u_);
-  t_->Branch("rechit_cell_v", &rechit_cell_v_);
-  t_->Branch("rechit_detid", &rechit_detid_);
-  t_->Branch("rechit_isHalf", &rechit_isHalf_);
-  t_->Branch("rechit_flags", &rechit_flags_);
-  t_->Branch("rechit_cluster2d", &rechit_cluster2d_);
-  t_->Branch("rechit_radius", &rechit_radius_);
 
   ////////////////////
   // layer clusters
@@ -652,12 +632,14 @@ HGCalTracksterPID::HGCalTracksterPID(const edm::ParameterSet &iConfig)
   t_->Branch("cluster2d_multicluster", &cluster2d_multicluster_);
   t_->Branch("cluster2d_rechits", &cluster2d_rechits_);
   t_->Branch("cluster2d_rechitSeed", &cluster2d_rechitSeed_);
-  t_->Branch("cluster2d_trackster", &cluster2d_trackster_);
-
+  if(doTracksters_)
+  {
+    t_->Branch("cluster2d_trackster", &cluster2d_trackster_);
+  }
   ////////////////////
   // gun particles
   //
-  if (storeClusterMatching_)
+  if (storeCPMatching_)
   {
     t_->Branch("cluster2d_sim_pdg", &cluster2d_trackster_);
 
@@ -673,67 +655,124 @@ HGCalTracksterPID::HGCalTracksterPID(const edm::ParameterSet &iConfig)
   ////////////////////
   // tracksters
   //
-  t_->Branch("trackster_clusters", &trackster_clusters_);
-
+  if(doTracksters_)
+  {
+    t_->Branch("trackster_clusters", &trackster_clusters_);
+  }
   ////////////////////
   // multi clusters
   //
-  t_->Branch("multiclus_eta", &multiclus_eta_);
-  t_->Branch("multiclus_phi", &multiclus_phi_);
-  t_->Branch("multiclus_pt", &multiclus_pt_);
-  t_->Branch("multiclus_energy", &multiclus_energy_);
-  t_->Branch("multiclus_z", &multiclus_z_);
-  t_->Branch("multiclus_slopeX", &multiclus_slopeX_);
-  t_->Branch("multiclus_slopeY", &multiclus_slopeY_);
-  t_->Branch("multiclus_cluster2d", &multiclus_cluster2d_);
-  t_->Branch("multiclus_cl2dSeed", &multiclus_cl2dSeed_);
-  t_->Branch("multiclus_firstLay", &multiclus_firstLay_);
-  t_->Branch("multiclus_lastLay", &multiclus_lastLay_);
-  t_->Branch("multiclus_NLay", &multiclus_NLay_);
+  if(!forPIDOnly_)
+  {
+
+    ////////////////////
+    // RecHits
+    // associated to layer clusters
+
+    t_->Branch("rechit_eta", &rechit_eta_);
+    t_->Branch("rechit_phi", &rechit_phi_);
+    t_->Branch("rechit_pt", &rechit_pt_);
+    t_->Branch("rechit_energy", &rechit_energy_);
+    t_->Branch("rechit_x", &rechit_x_);
+    t_->Branch("rechit_y", &rechit_y_);
+    t_->Branch("rechit_z", &rechit_z_);
+    t_->Branch("rechit_time", &rechit_time_);
+    t_->Branch("rechit_thickness", &rechit_thickness_);
+    t_->Branch("rechit_layer", &rechit_layer_);
+    t_->Branch("rechit_wafer_u", &rechit_wafer_u_);
+    t_->Branch("rechit_wafer_v", &rechit_wafer_v_);
+    t_->Branch("rechit_cell_u", &rechit_cell_u_);
+    t_->Branch("rechit_cell_v", &rechit_cell_v_);
+    t_->Branch("rechit_detid", &rechit_detid_);
+    t_->Branch("rechit_isHalf", &rechit_isHalf_);
+    t_->Branch("rechit_flags", &rechit_flags_);
+    t_->Branch("rechit_cluster2d", &rechit_cluster2d_);
+    t_->Branch("rechit_radius", &rechit_radius_);
+
+
+    t_->Branch("multiclus_eta", &multiclus_eta_);
+    t_->Branch("multiclus_phi", &multiclus_phi_);
+    t_->Branch("multiclus_pt", &multiclus_pt_);
+    t_->Branch("multiclus_energy", &multiclus_energy_);
+    t_->Branch("multiclus_z", &multiclus_z_);
+    t_->Branch("multiclus_slopeX", &multiclus_slopeX_);
+    t_->Branch("multiclus_slopeY", &multiclus_slopeY_);
+    t_->Branch("multiclus_cluster2d", &multiclus_cluster2d_);
+    t_->Branch("multiclus_cl2dSeed", &multiclus_cl2dSeed_);
+    t_->Branch("multiclus_firstLay", &multiclus_firstLay_);
+    t_->Branch("multiclus_lastLay", &multiclus_lastLay_);
+    t_->Branch("multiclus_NLay", &multiclus_NLay_);
+
+    ////////////////////
+    // sim clusters
+    //
+    t_->Branch("simcluster_eta", &simcluster_eta_);
+    t_->Branch("simcluster_phi", &simcluster_phi_);
+    t_->Branch("simcluster_pt", &simcluster_pt_);
+    t_->Branch("simcluster_energy", &simcluster_energy_);
+    t_->Branch("simcluster_simEnergy", &simcluster_simEnergy_);
+    t_->Branch("simcluster_hits", &simcluster_hits_);
+    t_->Branch("simcluster_hits_indices", &simcluster_hits_indices_);
+    t_->Branch("simcluster_fractions", &simcluster_fractions_);
+    t_->Branch("simcluster_layers", &simcluster_layers_);
+    t_->Branch("simcluster_wafers_u", &simcluster_wafers_u_);
+    t_->Branch("simcluster_wafers_v", &simcluster_wafers_v_);
+    t_->Branch("simcluster_cells_u", &simcluster_cells_u_);
+    t_->Branch("simcluster_cells_v", &simcluster_cells_v_);
+
+    ////////////////////
+    // PF clusters
+    //
+    t_->Branch("pfcluster_eta", &pfcluster_eta_);
+    t_->Branch("pfcluster_phi", &pfcluster_phi_);
+    t_->Branch("pfcluster_pt", &pfcluster_pt_);
+    t_->Branch("pfcluster_energy", &pfcluster_energy_);
+    t_->Branch("pfcluster_correctedEnergy", &pfcluster_correctedEnergy_);
+    t_->Branch("pfcluster_hits", &pfcluster_hits_);
+    t_->Branch("pfcluster_fractions", &pfcluster_fractions_);
+
+    ////////////////////
+    // PF clusters From MultiClusters
+    //
+    t_->Branch("pfclusterFromMultiCl_pos", &pfclusterFromMultiCl_pos_);
+    t_->Branch("pfclusterFromMultiCl_eta", &pfclusterFromMultiCl_eta_);
+    t_->Branch("pfclusterFromMultiCl_phi", &pfclusterFromMultiCl_phi_);
+    t_->Branch("pfclusterFromMultiCl_pt", &pfclusterFromMultiCl_pt_);
+    t_->Branch("pfclusterFromMultiCl_energy", &pfclusterFromMultiCl_energy_);
+    t_->Branch("pfclusterFromMultiCl_energyEE", &pfclusterFromMultiCl_energyEE_);
+    t_->Branch("pfclusterFromMultiCl_energyFH", &pfclusterFromMultiCl_energyFH_);
+    t_->Branch("pfclusterFromMultiCl_energyBH", &pfclusterFromMultiCl_energyBH_);
+    t_->Branch("pfclusterFromMultiCl_correctedEnergy", &pfclusterFromMultiCl_correctedEnergy_);
+    t_->Branch("pfclusterFromMultiCl_hits", &pfclusterFromMultiCl_hits_);
+    t_->Branch("pfclusterFromMultiCl_fractions", &pfclusterFromMultiCl_fractions_);
+    t_->Branch("pfclusterFromMultiCl_rechits", &pfclusterFromMultiCl_rechits_);
+
+    ////////////////////
+    // high purity trackstatep
+    //
+    t_->Branch("track_eta", &track_eta_);
+    t_->Branch("track_phi", &track_phi_);
+    t_->Branch("track_pt", &track_pt_);
+    t_->Branch("track_energy", &track_energy_);
+    t_->Branch("track_charge", &track_charge_);
+    t_->Branch("track_posx", &track_posx_);
+    t_->Branch("track_posy", &track_posy_);
+    t_->Branch("track_posz", &track_posz_);
+
+  }
+
+
 
   ////////////////////
-  // sim clusters
+  // PF candidates
   //
-  t_->Branch("simcluster_eta", &simcluster_eta_);
-  t_->Branch("simcluster_phi", &simcluster_phi_);
-  t_->Branch("simcluster_pt", &simcluster_pt_);
-  t_->Branch("simcluster_energy", &simcluster_energy_);
-  t_->Branch("simcluster_simEnergy", &simcluster_simEnergy_);
-  t_->Branch("simcluster_hits", &simcluster_hits_);
-  t_->Branch("simcluster_hits_indices", &simcluster_hits_indices_);
-  t_->Branch("simcluster_fractions", &simcluster_fractions_);
-  t_->Branch("simcluster_layers", &simcluster_layers_);
-  t_->Branch("simcluster_wafers_u", &simcluster_wafers_u_);
-  t_->Branch("simcluster_wafers_v", &simcluster_wafers_v_);
-  t_->Branch("simcluster_cells_u", &simcluster_cells_u_);
-  t_->Branch("simcluster_cells_v", &simcluster_cells_v_);
-
-  ////////////////////
-  // PF clusters
-  //
-  t_->Branch("pfcluster_eta", &pfcluster_eta_);
-  t_->Branch("pfcluster_phi", &pfcluster_phi_);
-  t_->Branch("pfcluster_pt", &pfcluster_pt_);
-  t_->Branch("pfcluster_energy", &pfcluster_energy_);
-  t_->Branch("pfcluster_correctedEnergy", &pfcluster_correctedEnergy_);
-  t_->Branch("pfcluster_hits", &pfcluster_hits_);
-  t_->Branch("pfcluster_fractions", &pfcluster_fractions_);
-
-  ////////////////////
-  // PF clusters From MultiClusters
-  //
-  t_->Branch("pfclusterFromMultiCl_pos", &pfclusterFromMultiCl_pos_);
-  t_->Branch("pfclusterFromMultiCl_eta", &pfclusterFromMultiCl_eta_);
-  t_->Branch("pfclusterFromMultiCl_phi", &pfclusterFromMultiCl_phi_);
-  t_->Branch("pfclusterFromMultiCl_pt", &pfclusterFromMultiCl_pt_);
-  t_->Branch("pfclusterFromMultiCl_energy", &pfclusterFromMultiCl_energy_);
-  t_->Branch("pfclusterFromMultiCl_energyEE", &pfclusterFromMultiCl_energyEE_);
-  t_->Branch("pfclusterFromMultiCl_energyFH", &pfclusterFromMultiCl_energyFH_);
-  t_->Branch("pfclusterFromMultiCl_energyBH", &pfclusterFromMultiCl_energyBH_);
-  t_->Branch("pfclusterFromMultiCl_correctedEnergy", &pfclusterFromMultiCl_correctedEnergy_);
-  t_->Branch("pfclusterFromMultiCl_hits", &pfclusterFromMultiCl_hits_);
-  t_->Branch("pfclusterFromMultiCl_fractions", &pfclusterFromMultiCl_fractions_);
-  t_->Branch("pfclusterFromMultiCl_rechits", &pfclusterFromMultiCl_rechits_);
+  if (storePFCandidates_) {
+    t_->Branch("pfcandidate_eta", &pfcandidate_eta_);
+    t_->Branch("pfcandidate_phi", &pfcandidate_phi_);
+    t_->Branch("pfcandidate_pt", &pfcandidate_pt_);
+    t_->Branch("pfcandidate_energy", &pfcandidate_energy_);
+    t_->Branch("pfcandidate_pdgid", &pfcandidate_pdgid_);
+  }
 
   ////////////////////
   // Ecal Driven Gsf Electrons From MultiClusters
@@ -791,28 +830,7 @@ HGCalTracksterPID::HGCalTracksterPID(const edm::ParameterSet &iConfig)
   t_->Branch("calopart_simEnergy", &calopart_simEnergy_);
   t_->Branch("calopart_simClusterIndex", &calopart_simClusterIndex_);
 
-  ////////////////////
-  // high purity trackstatep
-  //
-  t_->Branch("track_eta", &track_eta_);
-  t_->Branch("track_phi", &track_phi_);
-  t_->Branch("track_pt", &track_pt_);
-  t_->Branch("track_energy", &track_energy_);
-  t_->Branch("track_charge", &track_charge_);
-  t_->Branch("track_posx", &track_posx_);
-  t_->Branch("track_posy", &track_posy_);
-  t_->Branch("track_posz", &track_posz_);
 
-  ////////////////////
-  // PF candidates
-  //
-  if (storePFCandidates_) {
-    t_->Branch("pfcandidate_eta", &pfcandidate_eta_);
-    t_->Branch("pfcandidate_phi", &pfcandidate_phi_);
-    t_->Branch("pfcandidate_pt", &pfcandidate_pt_);
-    t_->Branch("pfcandidate_energy", &pfcandidate_energy_);
-    t_->Branch("pfcandidate_pdgid", &pfcandidate_pdgid_);
-  }
 
   ////////////////////
   // gun particles
@@ -1424,42 +1442,46 @@ void HGCalTracksterPID::analyze(const edm::Event &iEvent, const edm::EventSetup 
   storedLayerClusters_.clear();
   storedRecHits_.clear();
 
-  for (unsigned int i = 0; i < multiClusters.size(); i++) {
-    int cl2dSeed = 0;
-    std::set<int> layers;
-    std::vector<unsigned int> cl2dIndices;
+  if(!forPIDOnly_)
+  {
+    for (unsigned int i = 0; i < multiClusters.size(); i++) {
+      int cl2dSeed = 0;
+      std::set<int> layers;
+      std::vector<unsigned int> cl2dIndices;
 
-    for (reco::HGCalMultiCluster::component_iterator it = multiClusters[i].begin();
-         it != multiClusters[i].end(); it++) {
-      if ((*it)->energy() > (*(it + cl2dSeed))->energy()) cl2dSeed = it - multiClusters[i].begin();
-      cl2dIndices.push_back(cluster_index_);
-      int layer = 0;
-      if(doTracksters_)
-      {
-        layer = fillLayerCluster(*it, i, true);
-      }
-      else
-      {
-        layer = fillLayerCluster(*it, true, i);
-      }
-      layers.insert(layer);
-    }  // end of loop on layer clusters
+      for (reco::HGCalMultiCluster::component_iterator it = multiClusters[i].begin();
+           it != multiClusters[i].end(); it++) {
+        if ((*it)->energy() > (*(it + cl2dSeed))->energy()) cl2dSeed = it - multiClusters[i].begin();
+        cl2dIndices.push_back(cluster_index_);
+        int layer = 0;
+        if(doTracksters_)
+        {
+          layer = fillLayerCluster(*it, i, true);
+        }
+        else
+        {
+          layer = fillLayerCluster(*it, true, i);
+        }
+        layers.insert(layer);
+      }  // end of loop on layer clusters
 
-    double pt = multiClusters[i].energy() / cosh(multiClusters[i].eta());
+      double pt = multiClusters[i].energy() / cosh(multiClusters[i].eta());
 
-    multiclus_eta_.push_back(multiClusters[i].eta());
-    multiclus_phi_.push_back(multiClusters[i].phi());
-    multiclus_pt_.push_back(pt);
-    multiclus_energy_.push_back(multiClusters[i].energy());
-    multiclus_z_.push_back(multiClusters[i].z());
-    multiclus_slopeX_.push_back(multiClusters[i].x());
-    multiclus_slopeY_.push_back(multiClusters[i].y());
-    multiclus_cluster2d_.push_back(cl2dIndices);
-    multiclus_cl2dSeed_.push_back(cl2dSeed);
-    multiclus_firstLay_.push_back(*layers.begin());
-    multiclus_lastLay_.push_back(*layers.rbegin());
-    multiclus_NLay_.push_back(layers.size());
-  }  // end of loop on multiclusters
+      multiclus_eta_.push_back(multiClusters[i].eta());
+      multiclus_phi_.push_back(multiClusters[i].phi());
+      multiclus_pt_.push_back(pt);
+      multiclus_energy_.push_back(multiClusters[i].energy());
+      multiclus_z_.push_back(multiClusters[i].z());
+      multiclus_slopeX_.push_back(multiClusters[i].x());
+      multiclus_slopeY_.push_back(multiClusters[i].y());
+      multiclus_cluster2d_.push_back(cl2dIndices);
+      multiclus_cl2dSeed_.push_back(cl2dSeed);
+      multiclus_firstLay_.push_back(*layers.begin());
+      multiclus_lastLay_.push_back(*layers.rbegin());
+      multiclus_NLay_.push_back(layers.size());
+    }  // end of loop on multiclusters
+
+  }
 
 
   // Fills the additional 2d layers
@@ -1562,7 +1584,7 @@ void HGCalTracksterPID::analyze(const edm::Event &iEvent, const edm::EventSetup 
   }
 
   // Fill remaining RecHits
-  if (rawRecHits_) {
+  if (rawRecHits_ && !forPIDOnly_) {
     if (algo_ < 3) {
       const HGCRecHitCollection &rechitsEE = *recHitHandleEE;
       // loop over EE RecHits
@@ -1623,122 +1645,127 @@ void HGCalTracksterPID::analyze(const edm::Event &iEvent, const edm::EventSetup 
   }
 
   // loop over simClusters
-  for (std::vector<SimCluster>::const_iterator it_simClus = simClusters->begin();
-       it_simClus != simClusters->end(); ++it_simClus) {
-    const std::vector<std::pair<uint32_t, float>> hits_and_fractions =
-        it_simClus->hits_and_fractions();
-    std::vector<uint32_t> hits;
-    std::vector<int> hits_indices;
-    std::vector<float> fractions;
-    std::vector<unsigned int> layers;
-    std::vector<int> wafers_u;
-    std::vector<int> wafers_v;
-    std::vector<int> cells_u;
-    std::vector<int> cells_v;
-    for (std::vector<std::pair<uint32_t, float>>::const_iterator it_haf =
-             hits_and_fractions.begin();
-         it_haf != hits_and_fractions.end(); ++it_haf) {
-      auto index_iterator = detIdToRecHitIndexMap_.find( it_haf->first);
-      int index_simcluster = -1;
-      if(index_iterator != detIdToRecHitIndexMap_.end())
-        index_simcluster = index_iterator->second;
-      hits_indices.push_back(index_simcluster);
-      hits.push_back(it_haf->first);
-      fractions.push_back(it_haf->second);
-      layers.push_back(recHitTools_.getLayerWithOffset(it_haf->first));
-      if (DetId(it_haf->first).det() == DetId::Forward || DetId(it_haf->first).det() == DetId::HGCalEE || DetId(it_haf->first).det() == DetId::HGCalHSi) {
-        std::pair<int, int> this_wafer = recHitTools_.getWafer(it_haf->first);
-        std::pair<int, int> this_cell = recHitTools_.getCell(it_haf->first);
-        wafers_u.push_back(this_wafer.first);
-        wafers_v.push_back(this_wafer.second);
-        cells_u.push_back(this_cell.first);
-        cells_v.push_back(this_cell.second);
-      } else {
-        wafers_u.push_back(std::numeric_limits<unsigned int>::max());
-        wafers_v.push_back(std::numeric_limits<unsigned int>::max());
-        cells_u.push_back(std::numeric_limits<unsigned int>::max());
-        cells_v.push_back(std::numeric_limits<unsigned int>::max());
+  if(!forPIDOnly_)
+  {
+    for (std::vector<SimCluster>::const_iterator it_simClus = simClusters->begin();
+         it_simClus != simClusters->end(); ++it_simClus) {
+      const std::vector<std::pair<uint32_t, float>> hits_and_fractions =
+          it_simClus->hits_and_fractions();
+      std::vector<uint32_t> hits;
+      std::vector<int> hits_indices;
+      std::vector<float> fractions;
+      std::vector<unsigned int> layers;
+      std::vector<int> wafers_u;
+      std::vector<int> wafers_v;
+      std::vector<int> cells_u;
+      std::vector<int> cells_v;
+      for (std::vector<std::pair<uint32_t, float>>::const_iterator it_haf =
+               hits_and_fractions.begin();
+           it_haf != hits_and_fractions.end(); ++it_haf) {
+        auto index_iterator = detIdToRecHitIndexMap_.find( it_haf->first);
+        int index_simcluster = -1;
+        if(index_iterator != detIdToRecHitIndexMap_.end())
+          index_simcluster = index_iterator->second;
+        hits_indices.push_back(index_simcluster);
+        hits.push_back(it_haf->first);
+        fractions.push_back(it_haf->second);
+        layers.push_back(recHitTools_.getLayerWithOffset(it_haf->first));
+        if (DetId(it_haf->first).det() == DetId::Forward || DetId(it_haf->first).det() == DetId::HGCalEE || DetId(it_haf->first).det() == DetId::HGCalHSi) {
+          std::pair<int, int> this_wafer = recHitTools_.getWafer(it_haf->first);
+          std::pair<int, int> this_cell = recHitTools_.getCell(it_haf->first);
+          wafers_u.push_back(this_wafer.first);
+          wafers_v.push_back(this_wafer.second);
+          cells_u.push_back(this_cell.first);
+          cells_v.push_back(this_cell.second);
+        } else {
+          wafers_u.push_back(std::numeric_limits<unsigned int>::max());
+          wafers_v.push_back(std::numeric_limits<unsigned int>::max());
+          cells_u.push_back(std::numeric_limits<unsigned int>::max());
+          cells_v.push_back(std::numeric_limits<unsigned int>::max());
+        }
       }
-    }
 
-    simcluster_eta_.push_back(it_simClus->eta());
-    simcluster_phi_.push_back(it_simClus->phi());
-    simcluster_pt_.push_back(it_simClus->pt());
-    simcluster_energy_.push_back(it_simClus->energy());
-    simcluster_simEnergy_.push_back(it_simClus->simEnergy());
-    simcluster_hits_.push_back(hits);
-    simcluster_hits_indices_.push_back(hits_indices);
-    simcluster_fractions_.push_back(fractions);
-    simcluster_layers_.push_back(layers);
-    simcluster_wafers_u_.push_back(wafers_u);
-    simcluster_wafers_v_.push_back(wafers_v);
-    simcluster_cells_u_.push_back(cells_u);
-    simcluster_cells_v_.push_back(cells_v);
+      simcluster_eta_.push_back(it_simClus->eta());
+      simcluster_phi_.push_back(it_simClus->phi());
+      simcluster_pt_.push_back(it_simClus->pt());
+      simcluster_energy_.push_back(it_simClus->energy());
+      simcluster_simEnergy_.push_back(it_simClus->simEnergy());
+      simcluster_hits_.push_back(hits);
+      simcluster_hits_indices_.push_back(hits_indices);
+      simcluster_fractions_.push_back(fractions);
+      simcluster_layers_.push_back(layers);
+      simcluster_wafers_u_.push_back(wafers_u);
+      simcluster_wafers_v_.push_back(wafers_v);
+      simcluster_cells_u_.push_back(cells_u);
+      simcluster_cells_v_.push_back(cells_v);
 
-  }  // end loop over simClusters
+    }  // end loop over simClusters
 
-  // loop over pfClusters
-  for (std::vector<reco::PFCluster>::const_iterator it_pfClus = pfClusters.begin();
-       it_pfClus != pfClusters.end(); ++it_pfClus) {
-    const std::vector<std::pair<DetId, float>> hits_and_fractions = it_pfClus->hitsAndFractions();
-    std::vector<uint32_t> hits;
-    std::vector<float> fractions;
-    for (std::vector<std::pair<DetId, float>>::const_iterator it_haf = hits_and_fractions.begin();
-         it_haf != hits_and_fractions.end(); ++it_haf) {
-      hits.push_back(it_haf->first);
-      fractions.push_back(it_haf->second);
-    }
-    pfcluster_eta_.push_back(it_pfClus->eta());
-    pfcluster_phi_.push_back(it_pfClus->phi());
-    pfcluster_pt_.push_back(it_pfClus->pt());
-    pfcluster_energy_.push_back(it_pfClus->energy());
-    pfcluster_correctedEnergy_.push_back(it_pfClus->correctedEnergy());
-    pfcluster_hits_.push_back(hits);
-    pfcluster_fractions_.push_back(fractions);
+    // loop over pfClusters
+    for (std::vector<reco::PFCluster>::const_iterator it_pfClus = pfClusters.begin();
+         it_pfClus != pfClusters.end(); ++it_pfClus) {
+      const std::vector<std::pair<DetId, float>> hits_and_fractions = it_pfClus->hitsAndFractions();
+      std::vector<uint32_t> hits;
+      std::vector<float> fractions;
+      for (std::vector<std::pair<DetId, float>>::const_iterator it_haf = hits_and_fractions.begin();
+           it_haf != hits_and_fractions.end(); ++it_haf) {
+        hits.push_back(it_haf->first);
+        fractions.push_back(it_haf->second);
+      }
+      pfcluster_eta_.push_back(it_pfClus->eta());
+      pfcluster_phi_.push_back(it_pfClus->phi());
+      pfcluster_pt_.push_back(it_pfClus->pt());
+      pfcluster_energy_.push_back(it_pfClus->energy());
+      pfcluster_correctedEnergy_.push_back(it_pfClus->correctedEnergy());
+      pfcluster_hits_.push_back(hits);
+      pfcluster_fractions_.push_back(fractions);
 
-  }  // end loop over pfClusters
+    }  // end loop over pfClusters
 
-  // loop over pfClusters From MultiClusters (python label particleFlowClusterHGCalFromMultiCl)
-  for (std::vector<reco::PFCluster>::const_iterator it_pfClus = pfClustersFromMultiCl.begin();
-       it_pfClus != pfClustersFromMultiCl.end(); ++it_pfClus) {
-    const std::vector<std::pair<DetId, float>> hits_and_fractions = it_pfClus->hitsAndFractions();
-    std::vector<uint32_t> hits;
-    std::vector<float> fractions;
-    float energyEE = 0.;
-    float energyFH = 0.;
-    float energyBH = 0.;
-    for (std::vector<std::pair<DetId, float>>::const_iterator it_haf = hits_and_fractions.begin();
-         it_haf != hits_and_fractions.end(); ++it_haf) {
-      hits.push_back(it_haf->first);
-      fractions.push_back(it_haf->second);
-      HGCalDetId detid = HGCalDetId(it_haf->first);
-      if (detid.subdetId() == HGCEE || detid.det() == DetId::HGCalEE)
-        energyEE += hitmap_[it_haf->first]->energy() * it_haf->second;
-      else if (detid.subdetId() == HGCHEF || (detid.det() == DetId::HGCalHSi))
-        energyFH += hitmap_[it_haf->first]->energy() * it_haf->second;
-      else if (detid.subdetId() == BHM || detid.det() == DetId::HGCalHSc)
-        energyBH += hitmap_[it_haf->first]->energy() * it_haf->second;
-      else
-        assert(false);
-    }
-    pfclusterFromMultiCl_pos_.push_back(it_pfClus->position());
-    pfclusterFromMultiCl_eta_.push_back(it_pfClus->eta());
-    pfclusterFromMultiCl_phi_.push_back(it_pfClus->phi());
-    pfclusterFromMultiCl_pt_.push_back(it_pfClus->pt());
-    pfclusterFromMultiCl_energy_.push_back(it_pfClus->energy());
-    pfclusterFromMultiCl_energyEE_.push_back(energyEE);
-    pfclusterFromMultiCl_energyFH_.push_back(energyFH);
-    pfclusterFromMultiCl_energyBH_.push_back(energyBH);
-    pfclusterFromMultiCl_correctedEnergy_.push_back(it_pfClus->correctedEnergy());
-    pfclusterFromMultiCl_hits_.push_back(hits);
-    pfclusterFromMultiCl_fractions_.push_back(fractions);
-    std::vector<uint32_t> rechits_indices;
-    for (auto const i : hits) {
-      assert(detIdToRecHitIndexMap_.find(i) != detIdToRecHitIndexMap_.end());
-      rechits_indices.push_back(detIdToRecHitIndexMap_[i]);
-    }
-    pfclusterFromMultiCl_rechits_.push_back(rechits_indices);
-  }  // end loop over pfClusters From MultiClusters
+    // loop over pfClusters From MultiClusters (python label particleFlowClusterHGCalFromMultiCl)
+    for (std::vector<reco::PFCluster>::const_iterator it_pfClus = pfClustersFromMultiCl.begin();
+         it_pfClus != pfClustersFromMultiCl.end(); ++it_pfClus) {
+      const std::vector<std::pair<DetId, float>> hits_and_fractions = it_pfClus->hitsAndFractions();
+      std::vector<uint32_t> hits;
+      std::vector<float> fractions;
+      float energyEE = 0.;
+      float energyFH = 0.;
+      float energyBH = 0.;
+      for (std::vector<std::pair<DetId, float>>::const_iterator it_haf = hits_and_fractions.begin();
+           it_haf != hits_and_fractions.end(); ++it_haf) {
+        hits.push_back(it_haf->first);
+        fractions.push_back(it_haf->second);
+        HGCalDetId detid = HGCalDetId(it_haf->first);
+        if (detid.subdetId() == HGCEE || detid.det() == DetId::HGCalEE)
+          energyEE += hitmap_[it_haf->first]->energy() * it_haf->second;
+        else if (detid.subdetId() == HGCHEF || (detid.det() == DetId::HGCalHSi))
+          energyFH += hitmap_[it_haf->first]->energy() * it_haf->second;
+        else if (detid.subdetId() == BHM || detid.det() == DetId::HGCalHSc)
+          energyBH += hitmap_[it_haf->first]->energy() * it_haf->second;
+        else
+          assert(false);
+      }
+      pfclusterFromMultiCl_pos_.push_back(it_pfClus->position());
+      pfclusterFromMultiCl_eta_.push_back(it_pfClus->eta());
+      pfclusterFromMultiCl_phi_.push_back(it_pfClus->phi());
+      pfclusterFromMultiCl_pt_.push_back(it_pfClus->pt());
+      pfclusterFromMultiCl_energy_.push_back(it_pfClus->energy());
+      pfclusterFromMultiCl_energyEE_.push_back(energyEE);
+      pfclusterFromMultiCl_energyFH_.push_back(energyFH);
+      pfclusterFromMultiCl_energyBH_.push_back(energyBH);
+      pfclusterFromMultiCl_correctedEnergy_.push_back(it_pfClus->correctedEnergy());
+      pfclusterFromMultiCl_hits_.push_back(hits);
+      pfclusterFromMultiCl_fractions_.push_back(fractions);
+      std::vector<uint32_t> rechits_indices;
+      for (auto const i : hits) {
+        assert(detIdToRecHitIndexMap_.find(i) != detIdToRecHitIndexMap_.end());
+        rechits_indices.push_back(detIdToRecHitIndexMap_[i]);
+      }
+      pfclusterFromMultiCl_rechits_.push_back(rechits_indices);
+    }  // end loop over pfClusters From MultiClusters
+
+  }
+
 
   // Loop over Ecal Driven Gsf Electrons From MultiClusters
   if (storeElectrons_) {
@@ -1843,92 +1870,97 @@ void HGCalTracksterPID::analyze(const edm::Event &iEvent, const edm::EventSetup 
     }  // end loop over caloParticles
   }
 
-  // loop over tracks
+  if(!forPIDOnly_)
+  {
 
-  //  random = new RandomEngineAndDistribution(iEvent.streamID());
+    // loop over tracks
 
-  // prepare for RK propagation
-  defaultRKPropagator::Product prod(aField_, alongMomentum, 5.e-5);
-  auto &RKProp = prod.propagator;
+    //  random = new RandomEngineAndDistribution(iEvent.streamID());
 
-  for (std::vector<reco::Track>::const_iterator it_track = tracks.begin(); it_track != tracks.end();
-       ++it_track) {
-    if (!it_track->quality(reco::Track::highPurity)) continue;
+    // prepare for RK propagation
+    defaultRKPropagator::Product prod(aField_, alongMomentum, 5.e-5);
+    auto &RKProp = prod.propagator;
 
-    double energy = it_track->pt() * cosh(it_track->eta());
+    for (std::vector<reco::Track>::const_iterator it_track = tracks.begin(); it_track != tracks.end();
+         ++it_track) {
+      if (!it_track->quality(reco::Track::highPurity)) continue;
 
-    // save info about reconstructed tracks propoagation to hgcal layers (ony
-    // for pt>propagationPtThreshold_ tracks)
-    std::vector<float> xp, yp, zp;
+      double energy = it_track->pt() * cosh(it_track->eta());
 
-    if (it_track->pt() >= propagationPtThreshold_) {
-      // Define error matrix
-      ROOT::Math::SMatrixIdentity id;
-      AlgebraicSymMatrix55 C(id);
-      C *= 0.01;
-      CurvilinearTrajectoryError err(C);
-      typedef TrajectoryStateOnSurface TSOS;
+      // save info about reconstructed tracks propoagation to hgcal layers (ony
+      // for pt>propagationPtThreshold_ tracks)
+      std::vector<float> xp, yp, zp;
 
-      GlobalPoint startingPosition(it_track->vx(), it_track->vy(), it_track->vz());
-      GlobalVector startingMomentum(it_track->px(), it_track->py(), it_track->pz());
+      if (it_track->pt() >= propagationPtThreshold_) {
+        // Define error matrix
+        ROOT::Math::SMatrixIdentity id;
+        AlgebraicSymMatrix55 C(id);
+        C *= 0.01;
+        CurvilinearTrajectoryError err(C);
+        typedef TrajectoryStateOnSurface TSOS;
 
-      Plane::PlanePointer startingPlane =
-          Plane::build(Plane::PositionType(it_track->vx(), it_track->vy(), it_track->vz()),
-                       Plane::RotationType());
+        GlobalPoint startingPosition(it_track->vx(), it_track->vy(), it_track->vz());
+        GlobalVector startingMomentum(it_track->px(), it_track->py(), it_track->pz());
 
-      TSOS startingStateP(GlobalTrajectoryParameters(startingPosition, startingMomentum,
-                                                     it_track->charge(), aField_),
-                          err, *startingPlane);
+        Plane::PlanePointer startingPlane =
+            Plane::build(Plane::PositionType(it_track->vx(), it_track->vy(), it_track->vz()),
+                         Plane::RotationType());
 
-      for (unsigned il = 0; il < layerPositions_.size(); ++il) {
-        float xp_curr = 0;
-        float yp_curr = 0;
-        float zp_curr = 0;
+        TSOS startingStateP(GlobalTrajectoryParameters(startingPosition, startingMomentum,
+                                                       it_track->charge(), aField_),
+                            err, *startingPlane);
 
-        for (int zside = -1; zside <= 1; zside += 2) {
-          // clearly try both sides
-          Plane::PlanePointer endPlane = Plane::build(
-              Plane::PositionType(0, 0, zside * layerPositions_[il]), Plane::RotationType());
-          try {
-            /*
-            std::cout << "Trying from " <<
-            " layer " << il <<
-            " starting point " << startingStateP.globalPosition() <<
-            std::endl;
-            */
-            TSOS trackStateP = RKProp.propagate(startingStateP, *endPlane);
-            if (trackStateP.isValid()) {
-              xp_curr = trackStateP.globalPosition().x();
-              yp_curr = trackStateP.globalPosition().y();
-              zp_curr = trackStateP.globalPosition().z();
+        for (unsigned il = 0; il < layerPositions_.size(); ++il) {
+          float xp_curr = 0;
+          float yp_curr = 0;
+          float zp_curr = 0;
 
-              // std::cout << "Succesfully finished Positive track propagation
-              // -------------- with RK: " << trackStateP.globalPosition() <<
-              // std::endl;
+          for (int zside = -1; zside <= 1; zside += 2) {
+            // clearly try both sides
+            Plane::PlanePointer endPlane = Plane::build(
+                Plane::PositionType(0, 0, zside * layerPositions_[il]), Plane::RotationType());
+            try {
+              /*
+              std::cout << "Trying from " <<
+              " layer " << il <<
+              " starting point " << startingStateP.globalPosition() <<
+              std::endl;
+              */
+              TSOS trackStateP = RKProp.propagate(startingStateP, *endPlane);
+              if (trackStateP.isValid()) {
+                xp_curr = trackStateP.globalPosition().x();
+                yp_curr = trackStateP.globalPosition().y();
+                zp_curr = trackStateP.globalPosition().z();
+
+                // std::cout << "Succesfully finished Positive track propagation
+                // -------------- with RK: " << trackStateP.globalPosition() <<
+                // std::endl;
+              }
+            } catch (...) {
+              std::cout << "MagVolumeOutsideValidity not properly caught!! Lost "
+                           "this track "
+                        << std::endl;
             }
-          } catch (...) {
-            std::cout << "MagVolumeOutsideValidity not properly caught!! Lost "
-                         "this track "
-                      << std::endl;
           }
-        }
-        xp.push_back(xp_curr);
-        yp.push_back(yp_curr);
-        zp.push_back(zp_curr);
-      }  // closes loop on layers
-    }    // closes conditions pt>3
+          xp.push_back(xp_curr);
+          yp.push_back(yp_curr);
+          zp.push_back(zp_curr);
+        }  // closes loop on layers
+      }    // closes conditions pt>3
 
-    // save info in tree
-    track_pt_.push_back(it_track->pt());
-    track_eta_.push_back(it_track->eta());
-    track_phi_.push_back(it_track->phi());
-    track_energy_.push_back(energy);
-    track_charge_.push_back(it_track->charge());
-    track_posx_.push_back(xp);
-    track_posy_.push_back(yp);
-    track_posz_.push_back(zp);
+      // save info in tree
+      track_pt_.push_back(it_track->pt());
+      track_eta_.push_back(it_track->eta());
+      track_phi_.push_back(it_track->phi());
+      track_energy_.push_back(energy);
+      track_charge_.push_back(it_track->charge());
+      track_posx_.push_back(xp);
+      track_posy_.push_back(yp);
+      track_posz_.push_back(zp);
 
-  }  // end loop over tracks
+    }  // end loop over tracks
+
+  }
 
   if (storePFCandidates_) {
     Handle<std::vector<reco::PFCandidate>> pfCandidatesHandle;
