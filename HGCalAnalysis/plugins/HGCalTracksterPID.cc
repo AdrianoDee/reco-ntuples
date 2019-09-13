@@ -216,7 +216,10 @@ class HGCalTracksterPID : public edm::one::EDAnalyzer<edm::one::WatchRuns, edm::
   edm::EDGetTokenT<edm::ValueMap<reco::CaloClusterPtr>> electrons_ValueMapClusters_;
   edm::EDGetTokenT<std::vector<reco::Vertex>> vertices_;
   edm::EDGetTokenT<std::vector<reco::PFCandidate>> pfCandidates_;
-  edm::EDGetTokenT<std::vector<ticl::Trackster>> tracksters_;
+  edm::EDGetTokenT<std::vector<ticl::Trackster>> trackstersEM_;
+  edm::EDGetTokenT<std::vector<ticl::Trackster>> trackstersHAD_;
+  edm::EDGetTokenT<std::vector<ticl::Trackster>> trackstersMIP_;
+  edm::EDGetTokenT<std::vector<ticl::Trackster>> trackstersTrk_;
 
   TTree *t_;
 
@@ -308,7 +311,7 @@ class HGCalTracksterPID : public edm::one::EDAnalyzer<edm::one::WatchRuns, edm::
   std::vector<int> cluster2d_multicluster_;
   std::vector<std::vector<unsigned int>> cluster2d_rechits_;
   std::vector<int> cluster2d_rechitSeed_;
-  std::vector<std::vector<unsigned int>> cluster2d_trackster_;
+  // std::vector<std::vector<unsigned int>> cluster2d_trackster_;
 
   std::vector<std::vector<unsigned int>> cluster2d_cpId_;
   std::vector<std::vector<int>> cluster2d_cpPdg_;
@@ -321,7 +324,10 @@ class HGCalTracksterPID : public edm::one::EDAnalyzer<edm::one::WatchRuns, edm::
 
   ////////////////////
   // trackster
-  std::vector<std::vector<unsigned int>> trackster_clusters_;
+  std::vector<std::vector<unsigned int>> tracksterEM_clusters_;
+  std::vector<std::vector<unsigned int>> tracksterHAD_clusters_;
+  std::vector<std::vector<unsigned int>> tracksterMIP_clusters_;
+  std::vector<std::vector<unsigned int>> tracksterTrk_clusters_;
 
   ////////////////////
   // multi clusters
@@ -547,7 +553,11 @@ HGCalTracksterPID::HGCalTracksterPID(const edm::ParameterSet &iConfig)
     pfCandidates_ = consumes<std::vector<reco::PFCandidate>>(edm::InputTag("particleFlow"));
   }
 
-  tracksters_ = consumes<std::vector<ticl::Trackster>>(edm::InputTag("Tracksters"));
+  trackstersEM_ = consumes<std::vector<ticl::Trackster>>(edm::InputTag("trackstersEM"));
+  trackstersHAD_ = consumes<std::vector<ticl::Trackster>>(edm::InputTag("trackstersHAD"));
+  trackstersMIP_ = consumes<std::vector<ticl::Trackster>>(edm::InputTag("trackstersMIP"));
+  trackstersTrk_ = consumes<std::vector<ticl::Trackster>>(edm::InputTag("trackstersTrk"));
+
   pfClusters_ = consumes<std::vector<reco::PFCluster>>(edm::InputTag("particleFlowClusterHGCal"));
   pfClustersFromMultiCl_ =
       consumes<std::vector<reco::PFCluster>>(edm::InputTag("particleFlowClusterHGCalFromMultiCl"));
@@ -632,16 +642,17 @@ HGCalTracksterPID::HGCalTracksterPID(const edm::ParameterSet &iConfig)
   t_->Branch("cluster2d_multicluster", &cluster2d_multicluster_);
   t_->Branch("cluster2d_rechits", &cluster2d_rechits_);
   t_->Branch("cluster2d_rechitSeed", &cluster2d_rechitSeed_);
-  if(doTracksters_)
-  {
-    t_->Branch("cluster2d_trackster", &cluster2d_trackster_);
-  }
+  // if(doTracksters_)
+  // {
+  //   t_->Branch("cluster2d_trackster", &cluster2d_trackster_);
+  // }
+
   ////////////////////
   // gun particles
   //
   if (storeCPMatching_)
   {
-    t_->Branch("cluster2d_sim_pdg", &cluster2d_trackster_);
+    // t_->Branch("cluster2d_sim_pdg", &cluster2d_trackster_);
 
     t_->Branch("cluster2d_cpId", &cluster2d_cpId_);
     t_->Branch("cluster2d_cpPdg", &cluster2d_cpPdg_);
@@ -657,7 +668,10 @@ HGCalTracksterPID::HGCalTracksterPID(const edm::ParameterSet &iConfig)
   //
   if(doTracksters_)
   {
-    t_->Branch("trackster_clusters", &trackster_clusters_);
+    t_->Branch("tracksterEM_clusters", &tracksterEM_clusters_);
+    t_->Branch("tracksterHAD_clusters", &tracksterHAD_clusters_);
+    t_->Branch("tracksterMIP_clusters", &tracksterMIP_clusters_);
+    t_->Branch("tracksterTrk_clusters", &tracksterTrk_clusters_);
   }
   ////////////////////
   // multi clusters
@@ -939,7 +953,8 @@ void HGCalTracksterPID::clearVariables() {
   cluster2d_multicluster_.clear();
   cluster2d_rechits_.clear();
   cluster2d_rechitSeed_.clear();
-  cluster2d_trackster_.clear();
+  // cluster2d_trackster_.clear();
+
 
   cluster2d_cpId_.clear();
   cluster2d_cpPdg_.clear();
@@ -952,8 +967,10 @@ void HGCalTracksterPID::clearVariables() {
 
   ////////////////////
   // tracksters
-  trackster_clusters_.clear();
-
+  tracksterEM_clusters_.clear();
+  tracksterHAD_clusters_.clear();
+  tracksterMIP_clusters_.clear();
+  tracksterTrk_clusters_.clear();
   ////////////////////
   // multi clusters
   //
@@ -1098,9 +1115,21 @@ void HGCalTracksterPID::analyze(const edm::Event &iEvent, const edm::EventSetup 
 
   clearVariables();
 
-  Handle<std::vector<ticl::Trackster>> trackstersHandle;
-  iEvent.getByToken(tracksters_, trackstersHandle);
-  const std::vector<ticl::Trackster> &tracksters = (*trackstersHandle);
+  Handle<std::vector<ticl::Trackster>> trackstersEMHandle;
+  iEvent.getByToken(trackstersEM_, trackstersEMHandle);
+  const std::vector<ticl::Trackster> &trackstersEM = (*trackstersEMHandle);
+
+  Handle<std::vector<ticl::Trackster>> trackstersHADHandle;
+  iEvent.getByToken(trackstersHAD_, trackstersHADHandle);
+  const std::vector<ticl::Trackster> &trackstersHAD = (*trackstersHADHandle);
+
+  Handle<std::vector<ticl::Trackster>> trackstersMIPHandle;
+  iEvent.getByToken(trackstersMIP_, trackstersMIPHandle);
+  const std::vector<ticl::Trackster> &trackstersMIP = (*trackstersMIPHandle);
+
+  Handle<std::vector<ticl::Trackster>> trackstersTrkHandle;
+  iEvent.getByToken(trackstersTrk_, trackstersTrkHandle);
+  const std::vector<ticl::Trackster> &trackstersTrk = (*trackstersTrkHandle);
 
   Handle<HGCRecHitCollection> recHitHandleEE;
   Handle<HGCRecHitCollection> recHitHandleFH;
@@ -1346,26 +1375,78 @@ void HGCalTracksterPID::analyze(const edm::Event &iEvent, const edm::EventSetup 
 
   //Fills trackster infos
 
-  unsigned int ntrackster = 0;
+  unsigned int ntracksterEM = 0;
+  unsigned int ntracksterHAD = 0;
+  unsigned int ntracksterMIP = 0;
+  unsigned int ntracksterTrk = 0;
 
   if(doTracksters_)
   {
 
-    ntrackster = tracksters.size();
-    for (unsigned it = 0; it < ntrackster; ++it)
+    ntracksterEM = trackstersEM.size();
+    for (unsigned it = 0; it < ntracksterEM; ++it)
     {
-      std::cout << "Trackster " << it << std::endl;
+      std::cout << "TracksterEM " << it << std::endl;
 
       std::vector<unsigned int> ids;
-      for (unsigned int i = 0; i < tracksters[it].vertices.size(); i++)
+      for (unsigned int i = 0; i < trackstersEM[it].vertices.size(); i++)
       {
-        std::cout << tracksters[it].vertices[i] << " - ";
-        ids.push_back(tracksters[it].vertices[i]);
+        std::cout << trackstersEM[it].vertices[i] << " - ";
+        ids.push_back(trackstersEM[it].vertices[i]);
       }
       std::cout << std::endl;
       std::cout << std::endl;
-      trackster_clusters_.push_back(ids);
+      tracksterEM_clusters_.push_back(ids);
     }
+
+    ntracksterHAD = trackstersHAD.size();
+    for (unsigned it = 0; it < ntracksterHAD; ++it)
+    {
+      std::cout << "TracksterHAD " << it << std::endl;
+
+      std::vector<unsigned int> ids;
+      for (unsigned int i = 0; i < trackstersHAD[it].vertices.size(); i++)
+      {
+        std::cout << trackstersHAD[it].vertices[i] << " - ";
+        ids.push_back(trackstersHAD[it].vertices[i]);
+      }
+      std::cout << std::endl;
+      std::cout << std::endl;
+      tracksterHAD_clusters_.push_back(ids);
+    }
+
+    ntracksterMIP = trackstersMIP.size();
+    for (unsigned it = 0; it < ntracksterMIP; ++it)
+    {
+      std::cout << "TracksterMIP " << it << std::endl;
+
+      std::vector<unsigned int> ids;
+      for (unsigned int i = 0; i < trackstersMIP[it].vertices.size(); i++)
+      {
+        std::cout << trackstersMIP[it].vertices[i] << " - ";
+        ids.push_back(trackstersMIP[it].vertices[i]);
+      }
+      std::cout << std::endl;
+      std::cout << std::endl;
+      tracksterMIP_clusters_.push_back(ids);
+    }
+
+    ntracksterTrk = trackstersTrk.size();
+    for (unsigned it = 0; it < ntracksterTrk; ++it)
+    {
+      std::cout << "TracksterTrk " << it << std::endl;
+
+      std::vector<unsigned int> ids;
+      for (unsigned int i = 0; i < trackstersTrk[it].vertices.size(); i++)
+      {
+        std::cout << trackstersTrk[it].vertices[i] << " - ";
+        ids.push_back(trackstersTrk[it].vertices[i]);
+      }
+      std::cout << std::endl;
+      std::cout << std::endl;
+      tracksterTrk_clusters_.push_back(ids);
+    }
+
   }
 
 
@@ -1498,20 +1579,20 @@ void HGCalTracksterPID::analyze(const edm::Event &iEvent, const edm::EventSetup 
       if (pt > layerClusterPtThreshold_) {
 
 
-        std::vector<unsigned int> ids;
-        //ids.push_back(-1);
+        // std::vector<unsigned int> ids;
+        // //ids.push_back(-1);
 
-        for (unsigned it = 0; it < ntrackster; ++it)
-        {
-          if(std::find(trackster_clusters_[it].begin(),trackster_clusters_[it].end(),ic)!=trackster_clusters_[it].end())
-          {
-            std::cout << it << ";";
-            ids.push_back(it);
-          }
-        }
-        std::cout <<std::endl;
+        // for (unsigned it = 0; it < ntracksterEM; ++it)
+        // {
+        //   if(std::find(tracksterEM_clusters_[it].begin(),tracksterEM_clusters_[it].end(),ic)!=tracksterEM_clusters_[it].end())
+        //   {
+        //     std::cout << it << ";";
+        //     ids.push_back(it);
+        //   }
+        // }
+        // std::cout <<std::endl;
 
-        cluster2d_trackster_.push_back(ids);
+        // cluster2d_trackster_.push_back(ids);
 
         const std::vector<std::pair<DetId, float>>& hits_and_fractions = clusters[ic].hitsAndFractions();
         unsigned int numberOfHitsInLC = hits_and_fractions.size();
